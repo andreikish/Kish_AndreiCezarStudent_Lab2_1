@@ -1,0 +1,33 @@
+@model IEnumerable<Kish_AndreiCezarStudent_Lab2.Models.Order>
+
+@{
+    ViewData["Title"] = "Orders";
+}
+
+<h1>Orders</h1>
+
+<p>
+    <a asp-action="Create">Create New</a>
+</p>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>OrderID</th>
+            <th>Book</th>
+            <th>Customer</th>
+            <th>OrderDate</th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model) {
+        <tr>
+            <td>@item.OrderID</td>
+            <td>@item.Book?.Title</td>
+            <td>@item.Customer?.Name</td>
+            <td>@item.OrderDate.ToString("g")</td>
+        </tr>
+}
+    </tbody>
+</table>
+

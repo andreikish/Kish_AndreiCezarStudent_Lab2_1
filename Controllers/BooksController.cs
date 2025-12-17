@@ -20,12 +20,52 @@ namespace Kish_AndreiCezarStudent_Lab2.Controllers
         }
 
         // GET: Books
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(string sortOrder, string searchString)
         {
-            var kish_AndreiCezarStudent_Lab2Context = _context.Book
-                                                .Include(b => b.Genre)
-                                                .Include(b => b.Author);
-            return View(await kish_AndreiCezarStudent_Lab2Context.ToListAsync());
+            ViewData["TitleSortParm"] = String.IsNullOrEmpty(sortOrder) ? "title_desc" : "";
+            ViewData["PriceSortParm"] = sortOrder == "Price" ? "price_desc" : "Price";
+            ViewData["CurrentFilter"] = searchString;
+
+            var books = _context.Book
+                                .Include(b => b.Genre)
+                                .Include(b => b.Author)
+                                .AsQueryable();
+
+            if (!String.IsNullOrEmpty(searchString))
+            {
+                books = books.Where(s => s.Title.Contains(searchString));
+            }
+
+            switch (sortOrder)
+            {
+                case "title_desc":
+                    books = books.OrderByDescending(b => b.Title);
+                    break;
+                case "Price":
+                    books = books.OrderBy(b => b.Price);
+                    break;
+                case "price_desc":
+                    books = books.OrderByDescending(b => b.Price);
+                    break;
+                default:
+                    books = books.OrderBy(b => b.Title);
+                    break;
+            }
+
+            // Project domain Book -> BookViewModel so the View receives the expected model type
+            var model = await books
+                .AsNoTracking()
+                .Select(b => new BookViewModel
+                {
+                    ID = b.ID,
+                    Title = b.Title,
+                    Price = b.Price,
+                    Author = b.Author,
+                    FullName = b.Author != null ? b.Author.FullName : null
+                })
+                .ToListAsync();
+
+            return View(model);
         }
 
         // GET: Books/Details/5
@@ -37,9 +77,10 @@ namespace Kish_AndreiCezarStudent_Lab2.Controllers
             }
 
             var book = await _context.Book
-                .Include(b => b.Genre)
-                .Include(b => b.Author)
-                .FirstOrDefaultAsync(m => m.ID == id);
+            .Include(s => s.Orders)
+            .ThenInclude(e => e.Customer)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ID == id);
             if (book == null)
             {
                 return NotFound();
@@ -61,17 +102,25 @@ namespace Kish_AndreiCezarStudent_Lab2.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("ID,Title,AuthorID,Price,GenreID")] Book book)
+        public async Task<IActionResult> Create([Bind("Title,Author,Price")] Book book)
         {
-            if (ModelState.IsValid)
+            try {
+                if (ModelState.IsValid)
+                {
+                    _context.Add(book);
+                    await _context.SaveChangesAsync();
+                    return RedirectToAction(nameof(Index));
+                }
+                ViewData["GenreID"] = new SelectList(_context.Set<Genre>(), "ID", "ID", book.GenreID);
+                ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "ID", "ID", book.AuthorID);
+                return View(book);
+            } catch (DbUpdateException /* ex*/)
             {
-                _context.Add(book);
-                await _context.SaveChangesAsync();
-                return RedirectToAction(nameof(Index));
+                ModelState.AddModelError("", "Unable to save changes. " + "Try again, and if the problem persists ");
+                ViewData["GenreID"] = new SelectList(_context.Set<Genre>(), "ID", "ID", book.GenreID);
+                ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "ID", "ID", book.AuthorID);
+                return View(book);
             }
-            ViewData["GenreID"] = new SelectList(_context.Set<Genre>(), "ID", "ID", book.GenreID);
-            ViewData["AuthorID"] = new SelectList(_context.Set<Author>(), "ID", "ID", book.AuthorID);
-            return View(book);
         }
 
         // GET: Books/Edit/5
@@ -167,6 +216,35 @@ namespace Kish_AndreiCezarStudent_Lab2.Controllers
         private bool BookExists(int id)
         {
             return _context.Book.Any(e => e.ID == id);
+        }
+        [HttpPost, ActionName("Edit")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EditPost(int? id)
+        {
+            if (id == null)
+            {
+                return NotFound();
+            }
+            var bookToUpdate = await _context.Book.FirstOrDefaultAsync(s => s.ID == id);
+            if (await TryUpdateModelAsync<Book>(
+            bookToUpdate,
+            "",
+            s => s.AuthorID, s => s.Title, s => s.Price, s => s.GenreID))
+            {
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    return RedirectToAction(nameof(Index));
+                }
+                catch (DbUpdateException /* ex */)
+                {
+                    ModelState.AddModelError("", "Unable to save changes. " +
+                    "Try again, and if the problem persists");
+                }
+            }
+            ViewData["AuthorID"] = new SelectList(_context.Author, "ID", "FullName",
+           bookToUpdate.AuthorID);
+            return View(bookToUpdate);
         }
     }
 }
